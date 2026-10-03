@@ -370,6 +370,14 @@ else()
 endif ()
 
 # icu
+if(SCARLET_NATIVE)
+	# Reuse GNU libiconv for the explicitly selected Japanese Windows codepage.
+	find_path(SCARLET_ICONV_INCLUDE iconv.h REQUIRED)
+	find_library(SCARLET_ICONV_LIBRARY iconv REQUIRED)
+	target_include_directories(lcf PRIVATE "${SCARLET_ICONV_INCLUDE}")
+	target_link_libraries(lcf "${SCARLET_ICONV_LIBRARY}")
+	target_compile_definitions(lcf PRIVATE LCF_SCARLET_ICONV=1)
+endif()
 set(LCF_SUPPORT_ICU 0)
 if(LIBLCF_WITH_ICU)
 	find_package(ICU COMPONENTS i18n uc data)

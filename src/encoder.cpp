@@ -13,6 +13,10 @@
 #include "log.h"
 #include <cstdio>
 #include <cstdlib>
+#ifdef LCF_SCARLET_ICONV
+#include <iconv.h>
+#include <cerrno>
+#endif
 
 #if LCF_SUPPORT_ICU == 1
 #   include <unicode/ucsdet.h>
@@ -110,6 +114,17 @@ void Encoder::Init() {
 	_conv_runtime = conv_runtime;
 	_conv_storage = conv_storage;
 #else
+#ifdef LCF_SCARLET_ICONV
+	if (storage_encoding == "ibm-943_P15A-2003" || storage_encoding == "CP932"
+		|| storage_encoding == "windows-932" || storage_encoding == "Shift_JIS") {
+		auto conversion = iconv_open("UTF-8", "CP932");
+		if (conversion == reinterpret_cast<iconv_t>(-1)) return;
+		iconv_close(conversion);
+		_conv_runtime = 65001;
+		_conv_storage = 932;
+		return;
+	}
+#endif
 	if (storage_encoding != "windows-1252") {
 		return;
 	}
@@ -160,6 +175,27 @@ void Encoder::Convert(std::string& str, int conv_dst, int) {
 	if (str.empty()) {
 		return;
 	}
+
+#ifdef LCF_SCARLET_ICONV
+	if (_conv_storage == 932) {
+		auto conversion = iconv_open(conv_dst == 65001 ? "UTF-8" : "CP932",
+			conv_dst == 65001 ? "CP932" : "UTF-8");
+		if (conversion == reinterpret_cast<iconv_t>(-1)) {
+			Log::Error("iconv_open() failed for native CP932: %d", errno);
+			str.clear(); return;
+		}
+		auto close = makeScopeGuard([&]() { iconv_close(conversion); });
+		_buffer.resize(str.size() * 4 + 8);
+		char* input = str.data(); size_t input_left = str.size();
+		char* output = _buffer.data(); size_t output_left = _buffer.size();
+		if (iconv(conversion, &input, &input_left, &output, &output_left) == size_t(-1)) {
+			Log::Error("iconv() failed for native CP932: %d", errno);
+			str.clear(); return;
+		}
+		str.assign(_buffer.data(), size_t(output - _buffer.data()));
+		return;
+	}
+#endif
 
 	size_t buf_idx = 0;
 
